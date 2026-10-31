@@ -2,278 +2,415 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <!-- Meta tag penting untuk Mobile: Mencegah zoom otomatis saat mengetik di iOS/Android -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DevNotes</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0f172a">
+    <title>DevPad - Code Note Tanpa Limit</title>
+    
+    <!-- PWA Setup - Injected via JS later, but meta tags here -->
+    <meta name="theme-color" content="#1e1e1e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link id="manifest-link" rel="manifest" href="">
+
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- RequireJS for Monaco Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;600&display=swap');
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #1e1e1e; color: #d4d4d4; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #editor-container { width: 100%; height: calc(100vh - 50px); }
         
-        body, html {
-            /* Menggunakan dvh agar pas dengan tinggi layar HP meskipun ada address bar */
-            height: 100dvh;
-            background-color: #0f172a;
-            color: #e2e8f0;
-            font-family: 'Inter', sans-serif;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
+        /* Custom Scrollbar for better aesthetic */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
 
-        /* Desain Header Glassmorphism yang Responsif */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 10;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 4px;
-            background: #1e293b;
-            padding: 4px;
-            border-radius: 10px;
-        }
-
-        .tab-btn {
-            background: transparent;
-            border: none;
-            color: #94a3b8;
-            padding: 10px 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .tab-btn.active {
-            background: #3b82f6;
-            color: white;
-            box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
-        }
-
-        /* Indikator Status */
-        .status-badge {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.3s ease;
-        }
-
-        .status-badge.saved { color: #34d399; border: 1px solid rgba(52, 211, 153, 0.2); }
-        .status-badge.saving { color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.2); }
-        .status-badge.error { color: #f87171; border: 1px solid rgba(248, 113, 113, 0.2); }
-
-        .editor-container {
-            flex: 1;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            position: relative;
-        }
-
-        textarea {
-            width: 100%;
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: #f8fafc;
-            resize: none;
-            outline: none;
-            /* Ukuran 16px sangat penting di mobile agar iOS tidak auto-zoom saat mengetik */
-            font-size: 16px; 
-            line-height: 1.6;
-            overflow-y: auto;
-            padding-bottom: 50px; /* Jarak ekstra di bawah untuk kenyamanan scrolling HP */
-        }
-
-        /* Custom Scrollbar untuk tampilan yang rapi */
-        textarea::-webkit-scrollbar { width: 6px; }
-        textarea::-webkit-scrollbar-track { background: transparent; }
-        textarea::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        textarea::-webkit-scrollbar-thumb:hover { background: #475569; }
-
-        /* Mode Coding */
-        textarea.coding-mode {
-            font-family: 'Fira Code', monospace;
-            color: #a5b4fc;
-            font-size: 14px; /* Sedikit lebih kecil untuk kode agar muat banyak */
-            line-height: 1.5;
-        }
-
-        /* Media Query untuk layar HP super kecil */
-        @media (max-width: 380px) {
-            .header { padding: 10px; }
-            .tab-btn { padding: 8px 10px; font-size: 0.8rem; }
-            .status-badge span { display: none; } /* Sembunyikan teks, sisa ikon jika layar sangat kecil */
-        }
+        /* Toast Animation */
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        .toast-exit { animation: slideOut 0.3s ease-in forwards; }
+        @keyframes slideIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideOut { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
     </style>
 </head>
-<body>
+<body class="flex flex-col h-screen bg-[#1e1e1e]">
 
-    <div class="header">
-        <div class="tabs">
-            <button class="tab-btn active" id="btn-personal" onclick="switchMode('personal')">
-                <span>📝</span> Pribadi
-            </button>
-            <button class="tab-btn" id="btn-coding" onclick="switchMode('coding')">
-                <span>💻</span> Coding
+    <!-- Navbar / Header -->
+    <header class="h-[50px] bg-[#252526] border-b border-[#333333] flex items-center justify-between px-4 shrink-0 shadow-md">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-code text-blue-500 text-xl"></i>
+            <h1 class="font-semibold text-gray-200 hidden sm:block">DevPad</h1>
+            
+            <!-- Language Selector -->
+            <div class="ml-2 relative">
+                <select id="language-select" class="bg-[#3c3c3c] text-sm text-gray-200 border-none rounded px-3 py-1 outline-none cursor-pointer appearance-none pr-8 hover:bg-[#4a4a4a] transition">
+                    <option value="javascript">JavaScript</option>
+                    <option value="typescript">TypeScript</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="python">Python</option>
+                    <option value="php">PHP</option>
+                    <option value="java">Java</option>
+                    <option value="c">C / C++</option>
+                    <option value="json">JSON</option>
+                    <option value="sql">SQL</option>
+                    <option value="plaintext">Plain Text</option>
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 pointer-events-none"></i>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <!-- Sync Status -->
+            <div id="sync-status" class="flex items-center gap-2 text-xs text-gray-400">
+                <i class="fa-solid fa-cloud text-gray-500"></i>
+                <span id="sync-text">Menyiapkan...</span>
+            </div>
+            
+            <button onclick="showDbSetupModal()" class="text-gray-400 hover:text-white transition" title="Info Database">
+                <i class="fa-solid fa-database"></i>
             </button>
         </div>
-        <div class="status-badge saved" id="save-status">
-            <span>🟢</span> <span class="status-text">Tersimpan</span>
-        </div>
-    </div>
+    </header>
 
-    <div class="editor-container">
-        <textarea id="editor" placeholder="Mulai mengetik... Catatan akan tersimpan otomatis ke cloud."></textarea>
+    <!-- Editor Container -->
+    <main id="editor-container" class="flex-1 relative">
+        <div id="loading-overlay" class="absolute inset-0 bg-[#1e1e1e] z-10 flex flex-col items-center justify-center">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
+            <p class="text-gray-400 text-sm">Memuat Editor Code...</p>
+        </div>
+    </main>
+
+    <!-- Toast Notification System -->
+    <div id="toast-container" class="fixed top-14 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Database Setup Modal -->
+    <div id="db-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex-items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-[#252526] border border-[#3c3c3c] rounded-lg shadow-2xl max-w-md w-full p-6 relative">
+            <button onclick="closeDbSetupModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <h2 class="text-xl font-bold text-white mb-4"><i class="fa-solid fa-database text-blue-500 mr-2"></i> Pengaturan Supabase</h2>
+            <p class="text-gray-300 text-sm mb-4">
+                Agar sinkronisasi ke cloud berfungsi, jalankan kode SQL ini di menu <strong>SQL Editor</strong> pada dashboard Supabase Anda:
+            </p>
+            <div class="relative bg-[#1e1e1e] p-3 rounded border border-[#333] mb-4 text-xs font-mono text-gray-300 overflow-x-auto">
+<pre id="sql-code">CREATE TABLE public.coding_notes (
+    id text primary key,
+    content text,
+    language text,
+    updated_at timestamp with time zone default now()
+);
+
+-- Matikan RLS agar bisa simpan tanpa login
+ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
+                <button onclick="copySQL()" class="absolute top-2 right-2 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-white px-2 py-1 rounded text-[10px] transition">
+                    <i class="fa-solid fa-copy"></i> Salin
+                </button>
+            </div>
+            <p class="text-xs text-yellow-500 mb-4">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i> Jangan khawatir, jika tabel belum dibuat, kode tetap aman tersimpan otomatis di penyimpanan lokal (perangkat) Anda.
+            </p>
+            <div class="flex justify-end">
+                <button onclick="closeDbSetupModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition">
+                    Mengerti
+                </button>
+            </div>
+        </div>
     </div>
 
     <script>
-        // Konfigurasi Supabase
+        // --- 1. PWA Setup (Bisa diinstal sebagai aplikasi) ---
+        const setupPWA = () => {
+            // Generate Manifest dynamically
+            const manifest = {
+                name: "DevPad Note",
+                short_name: "DevPad",
+                description: "Notepad khusus coding tanpa limit teks",
+                start_url: ".",
+                display: "standalone",
+                background_color: "#1e1e1e",
+                theme_color: "#1e1e1e",
+                icons: [
+                    {
+                        src: "https://placehold.co/192x192/252526/3b82f6?text=DP",
+                        sizes: "192x192",
+                        type: "image/png"
+                    },
+                    {
+                        src: "https://placehold.co/512x512/252526/3b82f6?text=DP",
+                        sizes: "512x512",
+                        type: "image/png"
+                    }
+                ]
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+            document.getElementById('manifest-link').href = URL.createObjectURL(manifestBlob);
+
+            // Generate Service Worker dynamically for offline support and PWA installability
+            const swCode = `
+                const CACHE_NAME = 'devpad-v1';
+                self.addEventListener('install', (e) => {
+                    self.skipWaiting();
+                });
+                self.addEventListener('activate', (e) => {
+                    e.waitUntil(self.clients.claim());
+                });
+                self.addEventListener('fetch', (e) => {
+                    // Simple passthrough, rely on browser cache for CDN assets
+                    // This is primarily just to satisfy PWA requirements
+                    e.respondWith(fetch(e.request).catch(() => new Response('Offline mode active')));
+                });
+            `;
+            const swBlob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(swBlob);
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register(swUrl).then(() => {
+                    console.log('PWA Service Worker Registered');
+                }).catch(err => console.log('SW Registration failed', err));
+            }
+        };
+        setupPWA();
+
+        // --- 2. Supabase Initialization ---
         const SUPABASE_URL = 'https://dxdgwngzbwkqynbreied.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_lwS_DxwYhAHzafLFMDQF0Q_DGOUXIYi';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const DOC_ID = 'main_note_1'; // Single document ID for the note
 
-        const editor = document.getElementById('editor');
-        const statusEl = document.getElementById('save-status');
-        const btnPersonal = document.getElementById('btn-personal');
-        const btnCoding = document.getElementById('btn-coding');
+        // --- 3. State Management & Utils ---
+        let editor;
+        let isSyncing = false;
+        let syncTimeout;
 
-        let currentMode = 'personal';
-        let notesData = { personal: '', coding: '' };
-        let saveTimeout;
-
-        function updateStatus(state, text) {
-            statusEl.className = `status-badge ${state}`;
-            statusEl.innerHTML = state === 'saved' ? `<span>🟢</span> <span class="status-text">${text}</span>` :
-                                 state === 'saving' ? `<span>🟡</span> <span class="status-text">${text}</span>` :
-                                 `<span>❌</span> <span class="status-text">${text}</span>`;
-        }
-
-        // 1. Ambil data dari Supabase
-        async function loadNotes() {
-            updateStatus('saving', 'Memuat...');
+        const showToast = (message, type = 'info') => {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
             
-            const { data, error } = await supabase.from('notes').select('*');
+            let colorClass = 'bg-[#3c3c3c] text-white';
+            let icon = 'fa-info-circle';
             
-            if (error) {
-                updateStatus('error', 'Gagal memuat');
-                console.error("Error database:", error);
-                return;
-            }
+            if(type === 'success') { colorClass = 'bg-green-600/90 text-white'; icon = 'fa-check-circle'; }
+            if(type === 'error') { colorClass = 'bg-red-600/90 text-white'; icon = 'fa-exclamation-circle'; }
 
-            if (data) {
-                data.forEach(note => {
-                    notesData[note.id] = note.content || '';
-                });
-            }
+            toast.className = `${colorClass} px-4 py-2 rounded-full shadow-lg text-sm flex items-center gap-2 toast-enter backdrop-blur-sm border border-white/10`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> ${message}`;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.replace('toast-enter', 'toast-exit');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
 
-            editor.value = notesData[currentMode] || '';
-            updateStatus('saved', 'Tersimpan');
-        }
-
-        // 2. Simpan data (Menggunakan UPSERT agar tidak error)
-        async function saveNote() {
-            const content = editor.value;
-            notesData[currentMode] = content;
-
-            updateStatus('saving', 'Menyimpan...');
-
-            const { error } = await supabase
-                .from('notes')
-                .upsert({ id: currentMode, content: content, updated_at: new Date() });
-
-            if (error) {
-                updateStatus('error', 'Gagal simpan');
-                console.error("Error simpan:", error);
+        const updateStatus = (status, state = 'normal') => {
+            const textEl = document.getElementById('sync-text');
+            const iconEl = document.getElementById('sync-status').querySelector('i');
+            textEl.innerText = status;
+            
+            iconEl.className = 'fa-solid';
+            if (state === 'syncing') {
+                iconEl.classList.add('fa-rotate', 'fa-spin', 'text-blue-400');
+                textEl.classList.replace('text-gray-400', 'text-blue-400');
+            } else if (state === 'success') {
+                iconEl.classList.add('fa-cloud-check', 'text-green-500');
+                textEl.className = 'text-green-500';
+            } else if (state === 'error') {
+                iconEl.classList.add('fa-cloud-xmark', 'text-red-500');
+                textEl.className = 'text-red-500';
             } else {
-                updateStatus('saved', 'Tersimpan');
+                iconEl.classList.add('fa-cloud', 'text-gray-500');
+                textEl.className = 'text-gray-400';
             }
-        }
+        };
 
-        // 3. Ganti Mode dengan aman
-        function switchMode(mode) {
-            if (currentMode === mode) return;
+        // --- 4. Core Logic: Save & Load ---
+        const saveLocally = (content, lang) => {
+            localStorage.setItem('devpad_content', content);
+            localStorage.setItem('devpad_lang', lang);
+        };
 
-            // Amankan teks sebelum pindah tab ke variabel lokal
-            notesData[currentMode] = editor.value;
-            currentMode = mode;
-            
-            // Ubah tombol aktif
-            btnPersonal.classList.toggle('active', mode === 'personal');
-            btnCoding.classList.toggle('active', mode === 'coding');
-            
-            // Terapkan font khusus
-            if (mode === 'coding') {
-                editor.classList.add('coding-mode');
-            } else {
-                editor.classList.remove('coding-mode');
+        const syncToCloud = async (content, lang) => {
+            if (isSyncing) return;
+            isSyncing = true;
+            updateStatus('Menyimpan ke Cloud...', 'syncing');
+
+            try {
+                const { error } = await supabaseClient
+                    .from('coding_notes')
+                    .upsert({ 
+                        id: DOC_ID, 
+                        content: content,
+                        language: lang,
+                        updated_at: new Date().toISOString()
+                    });
+
+                if (error) throw error;
+                updateStatus('Tersimpan di Cloud', 'success');
+            } catch (err) {
+                console.error("Supabase Sync Error:", err);
+                updateStatus('Tersimpan di Lokal (Cloud Gagal)', 'error');
+                // Silently fail for UX, but data is safe in localStorage
+                if(err.message.includes('relation "coding_notes" does not exist')) {
+                    // Only show this once per session
+                    if(!sessionStorage.getItem('db_warned')) {
+                        showToast('Tabel Supabase belum dibuat. Tersimpan offline.', 'error');
+                        sessionStorage.setItem('db_warned', 'true');
+                    }
+                }
+            } finally {
+                isSyncing = false;
             }
+        };
 
-            // Muat teks untuk mode yang baru
-            editor.value = notesData[mode] || '';
+        const handleContentChange = () => {
+            const content = editor.getValue();
+            const lang = document.getElementById('language-select').value;
             
-            // Fokuskan kursor kembali ke textarea agar pengguna langsung bisa mengetik (nyaman di HP)
-            editor.focus(); 
-        }
+            // 1. Instant Save (No Lag) to Device
+            saveLocally(content, lang);
+            updateStatus('Tersimpan di Perangkat');
 
-        // 4. Trigger auto-save cerdas (Debounce 1 detik)
-        editor.addEventListener('input', () => {
-            updateStatus('saving', 'Mengetik...');
-            notesData[currentMode] = editor.value;
+            // 2. Debounced Save to Cloud (Prevents lag/spamming API)
+            clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(() => {
+                syncToCloud(content, lang);
+            }, 2000); // Wait 2 seconds after typing stops before cloud sync
+        };
+
+        const loadInitialData = async () => {
+            // Load local first for immediate zero-lag display
+            let content = localStorage.getItem('devpad_content') || '// Mulai mencatat kodemu di sini...\n// Tidak ada limit teks. Ketik sebanyak apapun.\n';
+            let lang = localStorage.getItem('devpad_lang') || 'javascript';
             
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(saveNote, 1000);
-        });
+            document.getElementById('language-select').value = lang;
 
-        // 5. Fitur khusus Mode Coding: Tombol Tab untuk indentasi
-        editor.addEventListener('keydown', function(e) {
-            if (currentMode === 'coding' && e.key === 'Tab') {
-                e.preventDefault(); 
-                let start = this.selectionStart;
-                let end = this.selectionEnd;
-
-                // Masukkan 4 spasi
-                this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
-                this.selectionStart = this.selectionEnd = start + 4;
+            // Attempt to fetch from Cloud to see if it's newer
+            try {
+                const { data, error } = await supabaseClient
+                    .from('coding_notes')
+                    .select('content, language')
+                    .eq('id', DOC_ID)
+                    .single();
                 
-                notesData[currentMode] = this.value;
-                updateStatus('saving', 'Mengetik...');
-                clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(saveNote, 1000);
+                if (data && data.content) {
+                    content = data.content;
+                    if(data.language) {
+                        lang = data.language;
+                        document.getElementById('language-select').value = lang;
+                    }
+                    showToast('Disinkronkan dari Cloud', 'success');
+                }
+            } catch (err) {
+                console.log("Using local data (Cloud fetch failed or empty).");
+            }
+
+            return { content, lang };
+        };
+
+        // --- 5. Editor Initialization ---
+        // Setup RequireJS path for Monaco Editor CDN
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+
+        // Load Monaco
+        require(['vs/editor/editor.main'], async function() {
+            
+            // Define Custom Dark Theme matching the UI
+            monaco.editor.defineTheme('devpad-dark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [],
+                colors: {
+                    'editor.background': '#1e1e1e',
+                    'editor.lineHighlightBackground': '#2d2d30',
+                }
+            });
+
+            // Fetch data before creating editor
+            const initialData = await loadInitialData();
+
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: initialData.content,
+                language: initialData.lang,
+                theme: 'devpad-dark',
+                automaticLayout: true,
+                wordWrap: 'on',
+                minimap: { enabled: true },
+                fontSize: 14,
+                fontFamily: "'Fira Code', 'Courier New', monospace",
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                padding: { top: 16 }
+            });
+
+            // Remove loading overlay
+            document.getElementById('loading-overlay').style.display = 'none';
+            updateStatus('Siap Digunakan');
+
+            // Events
+            editor.onDidChangeModelContent(() => {
+                handleContentChange();
+            });
+
+            document.getElementById('language-select').addEventListener('change', (e) => {
+                const newLang = e.target.value;
+                monaco.editor.setModelLanguage(editor.getModel(), newLang);
+                handleContentChange(); // Trigger save to register language change
+                showToast(`Bahasa diubah ke ${newLang.toUpperCase()}`);
+            });
+        });
+
+        // --- 6. Anti-Lost Feature (Visibility Change) ---
+        // If user switches apps or closes tab, aggressively save to local storage immediately
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === 'hidden' && editor) {
+                saveLocally(editor.getValue(), document.getElementById('language-select').value);
+                // We do not await cloud sync here as browser might kill process,
+                // but local storage is synchronous and guaranteed.
             }
         });
 
-        // 6. Service Worker untuk Mode PWA / Offline fallback
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').catch(err => console.log('Service Worker gagal:', err));
+        // --- 7. Modal Handlers ---
+        function showDbSetupModal() {
+            const modal = document.getElementById('db-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeDbSetupModal() {
+            const modal = document.getElementById('db-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function copySQL() {
+            const sqlText = document.getElementById('sql-code').innerText;
+            navigator.clipboard.writeText(sqlText).then(() => {
+                showToast('SQL berhasil disalin!', 'success');
+            }).catch(err => {
+                // Fallback for older browsers / iframe restrictions
+                const textArea = document.createElement("textarea");
+                textArea.value = sqlText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand("copy");
+                    showToast('SQL berhasil disalin!', 'success');
+                } catch (e) {
+                    showToast('Gagal menyalin SQL', 'error');
+                }
+                textArea.remove();
             });
         }
-
-        // Jalankan saat pertama dibuka
-        loadNotes();
     </script>
 </body>
 </html>
