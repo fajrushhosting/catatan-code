@@ -1,0 +1,21 @@
+{
+  "name": "CodePad Pro",
+  "short_name": "CodePad",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "description": "Notepad koding tanpa batas teks",
+  "icons": [
+    {
+      "src": "https://www.google.com/s2/favicons?sz=192&domain=github.com",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://www.google.com/s2/favicons?sz=512&domain=github.com",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
