@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <!-- Meta tag penting untuk Mobile: Mencegah zoom otomatis saat mengetik di iOS/Android -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>DevNotes</title>
     <link rel="manifest" href="manifest.json">
@@ -13,7 +14,8 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body, html {
-            height: 100%;
+            /* Menggunakan dvh agar pas dengan tinggi layar HP meskipun ada address bar */
+            height: 100dvh;
             background-color: #0f172a;
             color: #e2e8f0;
             font-family: 'Inter', sans-serif;
@@ -22,74 +24,108 @@
             overflow: hidden;
         }
 
+        /* Desain Header Glassmorphism yang Responsif */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 20px;
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid #334155;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 10;
         }
 
         .tabs {
             display: flex;
-            gap: 10px;
+            gap: 4px;
             background: #1e293b;
-            padding: 5px;
-            border-radius: 8px;
+            padding: 4px;
+            border-radius: 10px;
         }
 
         .tab-btn {
             background: transparent;
             border: none;
             color: #94a3b8;
-            padding: 8px 16px;
-            border-radius: 6px;
+            padding: 10px 14px;
+            border-radius: 8px;
             cursor: pointer;
+            font-size: 0.9rem;
             font-weight: 600;
             transition: all 0.3s ease;
-        }
-
-        .tab-btn.active {
-            background: #3b82f6;
-            color: white;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-
-        .status {
-            font-size: 0.85rem;
-            color: #10b981;
             display: flex;
             align-items: center;
             gap: 6px;
         }
 
-        .status.saving { color: #f59e0b; }
-        .status.error { color: #ef4444; }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Indikator Status */
+        .status-badge {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.saved { color: #34d399; border: 1px solid rgba(52, 211, 153, 0.2); }
+        .status-badge.saving { color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.2); }
+        .status-badge.error { color: #f87171; border: 1px solid rgba(248, 113, 113, 0.2); }
 
         .editor-container {
             flex: 1;
-            padding: 20px;
+            padding: 16px;
             display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
         }
 
         textarea {
             width: 100%;
-            height: 100%;
+            flex: 1;
             background: transparent;
             border: none;
             color: #f8fafc;
             resize: none;
             outline: none;
-            font-size: 1rem;
+            /* Ukuran 16px sangat penting di mobile agar iOS tidak auto-zoom saat mengetik */
+            font-size: 16px; 
             line-height: 1.6;
+            overflow-y: auto;
+            padding-bottom: 50px; /* Jarak ekstra di bawah untuk kenyamanan scrolling HP */
         }
+
+        /* Custom Scrollbar untuk tampilan yang rapi */
+        textarea::-webkit-scrollbar { width: 6px; }
+        textarea::-webkit-scrollbar-track { background: transparent; }
+        textarea::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        textarea::-webkit-scrollbar-thumb:hover { background: #475569; }
 
         /* Mode Coding */
         textarea.coding-mode {
             font-family: 'Fira Code', monospace;
             color: #a5b4fc;
+            font-size: 14px; /* Sedikit lebih kecil untuk kode agar muat banyak */
+            line-height: 1.5;
+        }
+
+        /* Media Query untuk layar HP super kecil */
+        @media (max-width: 380px) {
+            .header { padding: 10px; }
+            .tab-btn { padding: 8px 10px; font-size: 0.8rem; }
+            .status-badge span { display: none; } /* Sembunyikan teks, sisa ikon jika layar sangat kecil */
         }
     </style>
 </head>
@@ -97,14 +133,20 @@
 
     <div class="header">
         <div class="tabs">
-            <button class="tab-btn active" id="btn-personal" onclick="switchMode('personal')">📝 Pribadi</button>
-            <button class="tab-btn" id="btn-coding" onclick="switchMode('coding')">💻 Coding</button>
+            <button class="tab-btn active" id="btn-personal" onclick="switchMode('personal')">
+                <span>📝</span> Pribadi
+            </button>
+            <button class="tab-btn" id="btn-coding" onclick="switchMode('coding')">
+                <span>💻</span> Coding
+            </button>
         </div>
-        <div class="status" id="save-status">🟢 Tersimpan</div>
+        <div class="status-badge saved" id="save-status">
+            <span>🟢</span> <span class="status-text">Tersimpan</span>
+        </div>
     </div>
 
     <div class="editor-container">
-        <textarea id="editor" placeholder="Mulai mengetik... Catatanmu akan tersimpan otomatis."></textarea>
+        <textarea id="editor" placeholder="Mulai mengetik... Catatan akan tersimpan otomatis ke cloud."></textarea>
     </div>
 
     <script>
@@ -122,88 +164,115 @@
         let notesData = { personal: '', coding: '' };
         let saveTimeout;
 
-        // Inisialisasi: Ambil data dari Supabase
+        function updateStatus(state, text) {
+            statusEl.className = `status-badge ${state}`;
+            statusEl.innerHTML = state === 'saved' ? `<span>🟢</span> <span class="status-text">${text}</span>` :
+                                 state === 'saving' ? `<span>🟡</span> <span class="status-text">${text}</span>` :
+                                 `<span>❌</span> <span class="status-text">${text}</span>`;
+        }
+
+        // 1. Ambil data dari Supabase
         async function loadNotes() {
-            statusEl.textContent = '🔄 Memuat...';
-            statusEl.className = 'status saving';
+            updateStatus('saving', 'Memuat...');
             
             const { data, error } = await supabase.from('notes').select('*');
             
             if (error) {
-                statusEl.textContent = '❌ Gagal memuat';
-                statusEl.className = 'status error';
-                console.error(error);
+                updateStatus('error', 'Gagal memuat');
+                console.error("Error database:", error);
                 return;
             }
 
-            data.forEach(note => {
-                notesData[note.id] = note.content;
-            });
+            if (data) {
+                data.forEach(note => {
+                    notesData[note.id] = note.content || '';
+                });
+            }
 
-            editor.value = notesData[currentMode];
-            statusEl.textContent = '🟢 Tersimpan';
-            statusEl.className = 'status';
+            editor.value = notesData[currentMode] || '';
+            updateStatus('saved', 'Tersimpan');
         }
 
-        // Simpan data ke Supabase
+        // 2. Simpan data (Menggunakan UPSERT agar tidak error)
         async function saveNote() {
             const content = editor.value;
             notesData[currentMode] = content;
 
-            statusEl.textContent = '🟡 Menyimpan...';
-            statusEl.className = 'status saving';
+            updateStatus('saving', 'Menyimpan...');
 
             const { error } = await supabase
                 .from('notes')
-                .update({ content: content, updated_at: new Date() })
-                .eq('id', currentMode);
+                .upsert({ id: currentMode, content: content, updated_at: new Date() });
 
             if (error) {
-                statusEl.textContent = '❌ Gagal menyimpan';
-                statusEl.className = 'status error';
+                updateStatus('error', 'Gagal simpan');
+                console.error("Error simpan:", error);
             } else {
-                statusEl.textContent = '🟢 Tersimpan';
-                statusEl.className = 'status';
+                updateStatus('saved', 'Tersimpan');
             }
         }
 
-        // Ganti Mode (Pribadi / Coding)
+        // 3. Ganti Mode dengan aman
         function switchMode(mode) {
+            if (currentMode === mode) return;
+
+            // Amankan teks sebelum pindah tab ke variabel lokal
+            notesData[currentMode] = editor.value;
             currentMode = mode;
             
-            // Ubah tampilan tombol
+            // Ubah tombol aktif
             btnPersonal.classList.toggle('active', mode === 'personal');
             btnCoding.classList.toggle('active', mode === 'coding');
             
-            // Ubah font textarea
-            if(mode === 'coding') {
+            // Terapkan font khusus
+            if (mode === 'coding') {
                 editor.classList.add('coding-mode');
             } else {
                 editor.classList.remove('coding-mode');
             }
 
-            // Ganti isi teks
-            editor.value = notesData[mode];
+            // Muat teks untuk mode yang baru
+            editor.value = notesData[mode] || '';
+            
+            // Fokuskan kursor kembali ke textarea agar pengguna langsung bisa mengetik (nyaman di HP)
+            editor.focus(); 
         }
 
-        // Auto-save: Menyimpan 1 detik setelah berhenti mengetik
+        // 4. Trigger auto-save cerdas (Debounce 1 detik)
         editor.addEventListener('input', () => {
-            statusEl.textContent = '✍️ Mengetik...';
-            statusEl.className = 'status saving';
-            notesData[currentMode] = editor.value; // simpan di memori lokal dulu
+            updateStatus('saving', 'Mengetik...');
+            notesData[currentMode] = editor.value;
             
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(saveNote, 1000);
         });
 
-        // Register Service Worker untuk PWA
+        // 5. Fitur khusus Mode Coding: Tombol Tab untuk indentasi
+        editor.addEventListener('keydown', function(e) {
+            if (currentMode === 'coding' && e.key === 'Tab') {
+                e.preventDefault(); 
+                let start = this.selectionStart;
+                let end = this.selectionEnd;
+
+                // Masukkan 4 spasi
+                this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
+                this.selectionStart = this.selectionEnd = start + 4;
+                
+                notesData[currentMode] = this.value;
+                updateStatus('saving', 'Mengetik...');
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(saveNote, 1000);
+            }
+        });
+
+        // 6. Service Worker untuk Mode PWA / Offline fallback
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js');
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('Service Worker gagal:', err));
             });
         }
 
-        // Panggil saat pertama kali dibuka
+        // Jalankan saat pertama dibuka
         loadNotes();
     </script>
 </body>
