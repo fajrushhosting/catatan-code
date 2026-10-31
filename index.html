@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DevNotes</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;600&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body, html {
+            height: 100%;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #334155;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            background: #1e293b;
+            padding: 5px;
+            border-radius: 8px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .status {
+            font-size: 0.85rem;
+            color: #10b981;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status.saving { color: #f59e0b; }
+        .status.error { color: #ef4444; }
+
+        .editor-container {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+            color: #f8fafc;
+            resize: none;
+            outline: none;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Mode Coding */
+        textarea.coding-mode {
+            font-family: 'Fira Code', monospace;
+            color: #a5b4fc;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="tabs">
+            <button class="tab-btn active" id="btn-personal" onclick="switchMode('personal')">📝 Pribadi</button>
+            <button class="tab-btn" id="btn-coding" onclick="switchMode('coding')">💻 Coding</button>
+        </div>
+        <div class="status" id="save-status">🟢 Tersimpan</div>
+    </div>
+
+    <div class="editor-container">
+        <textarea id="editor" placeholder="Mulai mengetik... Catatanmu akan tersimpan otomatis."></textarea>
+    </div>
+
+    <script>
+        // Konfigurasi Supabase
+        const SUPABASE_URL = 'https://dxdgwngzbwkqynbreied.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_lwS_DxwYhAHzafLFMDQF0Q_DGOUXIYi';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const editor = document.getElementById('editor');
+        const statusEl = document.getElementById('save-status');
+        const btnPersonal = document.getElementById('btn-personal');
+        const btnCoding = document.getElementById('btn-coding');
+
+        let currentMode = 'personal';
+        let notesData = { personal: '', coding: '' };
+        let saveTimeout;
+
+        // Inisialisasi: Ambil data dari Supabase
+        async function loadNotes() {
+            statusEl.textContent = '🔄 Memuat...';
+            statusEl.className = 'status saving';
+            
+            const { data, error } = await supabase.from('notes').select('*');
+            
+            if (error) {
+                statusEl.textContent = '❌ Gagal memuat';
+                statusEl.className = 'status error';
+                console.error(error);
+                return;
+            }
+
+            data.forEach(note => {
+                notesData[note.id] = note.content;
+            });
+
+            editor.value = notesData[currentMode];
+            statusEl.textContent = '🟢 Tersimpan';
+            statusEl.className = 'status';
+        }
+
+        // Simpan data ke Supabase
+        async function saveNote() {
+            const content = editor.value;
+            notesData[currentMode] = content;
+
+            statusEl.textContent = '🟡 Menyimpan...';
+            statusEl.className = 'status saving';
+
+            const { error } = await supabase
+                .from('notes')
+                .update({ content: content, updated_at: new Date() })
+                .eq('id', currentMode);
+
+            if (error) {
+                statusEl.textContent = '❌ Gagal menyimpan';
+                statusEl.className = 'status error';
+            } else {
+                statusEl.textContent = '🟢 Tersimpan';
+                statusEl.className = 'status';
+            }
+        }
+
+        // Ganti Mode (Pribadi / Coding)
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // Ubah tampilan tombol
+            btnPersonal.classList.toggle('active', mode === 'personal');
+            btnCoding.classList.toggle('active', mode === 'coding');
+            
+            // Ubah font textarea
+            if(mode === 'coding') {
+                editor.classList.add('coding-mode');
+            } else {
+                editor.classList.remove('coding-mode');
+            }
+
+            // Ganti isi teks
+            editor.value = notesData[mode];
+        }
+
+        // Auto-save: Menyimpan 1 detik setelah berhenti mengetik
+        editor.addEventListener('input', () => {
+            statusEl.textContent = '✍️ Mengetik...';
+            statusEl.className = 'status saving';
+            notesData[currentMode] = editor.value; // simpan di memori lokal dulu
+            
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveNote, 1000);
+        });
+
+        // Register Service Worker untuk PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
+
+        // Panggil saat pertama kali dibuka
+        loadNotes();
+    </script>
+</body>
+</html>
