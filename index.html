@@ -42,10 +42,28 @@
 </head>
 <body class="flex flex-col h-screen bg-[#1e1e1e]">
 
+    <!-- Sidebar & Overlay untuk Multiple Notes -->
+    <div id="sidebar-overlay" onclick="toggleSidebar(false)" class="fixed inset-0 bg-black/60 z-40 hidden backdrop-blur-sm transition-opacity"></div>
+    <div id="sidebar" class="fixed inset-y-0 left-0 w-72 bg-[#252526] border-r border-[#333333] transform -translate-x-full transition-transform duration-300 z-50 flex flex-col shadow-2xl">
+        <div class="p-4 border-b border-[#333] flex justify-between items-center bg-[#1e1e1e]">
+            <h2 class="text-white font-bold"><i class="fa-solid fa-book text-blue-500 mr-2"></i> Daftar Catatan</h2>
+            <button onclick="toggleSidebar(false)" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-4 border-b border-[#333]">
+            <button onclick="createNewNote()" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded py-2.5 text-sm font-semibold transition flex justify-center items-center gap-2 shadow-lg">
+                <i class="fa-solid fa-plus"></i> Catatan Baru
+            </button>
+        </div>
+        <div id="notes-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <!-- Notes will be injected here via JS -->
+        </div>
+    </div>
+
     <!-- Navbar / Header -->
     <header class="h-[50px] bg-[#252526] border-b border-[#333333] flex items-center justify-between px-4 shrink-0 shadow-md">
         <div class="flex items-center gap-3">
-            <i class="fa-solid fa-code text-blue-500 text-xl"></i>
+            <button onclick="toggleSidebar(true)" class="text-gray-400 hover:text-white text-xl mr-1"><i class="fa-solid fa-bars"></i></button>
+            <i class="fa-solid fa-code text-blue-500 text-xl hidden sm:block"></i>
             <h1 class="font-semibold text-gray-200 hidden sm:block">DevPad</h1>
             
             <!-- Language Selector -->
@@ -184,12 +202,28 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
         const SUPABASE_URL = 'https://dxdgwngzbwkqynbreied.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_lwS_DxwYhAHzafLFMDQF0Q_DGOUXIYi';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const DOC_ID = 'main_note_1'; // Single document ID for the note
 
-        // --- 3. State Management & Utils ---
+        // --- 3. State Management & Multiple Notes Logic ---
         let editor;
         let isSyncing = false;
         let syncTimeout;
+
+        // Migrasi data lama (jika ada) ke format baru
+        if (localStorage.getItem('devpad_content') && !localStorage.getItem('devpad_content_main_note_1')) {
+            localStorage.setItem('devpad_content_main_note_1', localStorage.getItem('devpad_content'));
+            localStorage.removeItem('devpad_content');
+        }
+
+        // State Daftar Catatan
+        let notes = JSON.parse(localStorage.getItem('devpad_notes')) || [{ id: 'main_note_1', title: 'Catatan Pertama', lang: 'javascript' }];
+        let currentNoteId = localStorage.getItem('devpad_current_note_id') || 'main_note_1';
+
+        // Pastikan catatan saat ini ada di list, jika tidak reset ke yang pertama
+        if(!notes.find(n => n.id === currentNoteId)) currentNoteId = notes[0].id;
+
+        const saveNotesList = () => {
+            localStorage.setItem('devpad_notes', JSON.stringify(notes));
+        };
 
         const showToast = (message, type = 'info') => {
             const container = document.getElementById('toast-container');
@@ -235,8 +269,17 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
 
         // --- 4. Core Logic: Save & Load ---
         const saveLocally = (content, lang) => {
-            localStorage.setItem('devpad_content', content);
-            localStorage.setItem('devpad_lang', lang);
+            localStorage.setItem(`devpad_content_${currentNoteId}`, content);
+            
+            // Auto-update judul berdasarkan baris pertama
+            const noteIndex = notes.findIndex(n => n.id === currentNoteId);
+            if (noteIndex > -1) {
+                notes[noteIndex].lang = lang;
+                const firstLine = content.split('\n')[0].replace(/\/\/|<!--|\/\*|#/g, '').trim().substring(0, 25);
+                notes[noteIndex].title = firstLine || `Catatan ${noteIndex + 1}`;
+                saveNotesList();
+                renderSidebar(); // Update UI Sidebar
+            }
         };
 
         const syncToCloud = async (content, lang) => {
@@ -248,7 +291,7 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
                 const { error } = await supabaseClient
                     .from('coding_notes')
                     .upsert({ 
-                        id: DOC_ID, 
+                        id: currentNoteId, 
                         content: content,
                         language: lang,
                         updated_at: new Date().toISOString()
@@ -258,15 +301,7 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
                 updateStatus('Tersimpan di Cloud', 'success');
             } catch (err) {
                 console.error("Supabase Sync Error:", err);
-                updateStatus('Tersimpan di Lokal (Cloud Gagal)', 'error');
-                // Silently fail for UX, but data is safe in localStorage
-                if(err.message.includes('relation "coding_notes" does not exist')) {
-                    // Only show this once per session
-                    if(!sessionStorage.getItem('db_warned')) {
-                        showToast('Tabel Supabase belum dibuat. Tersimpan offline.', 'error');
-                        sessionStorage.setItem('db_warned', 'true');
-                    }
-                }
+                updateStatus('Tersimpan Lokal (Offline)', 'error');
             } finally {
                 isSyncing = false;
             }
@@ -276,30 +311,27 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
             const content = editor.getValue();
             const lang = document.getElementById('language-select').value;
             
-            // 1. Instant Save (No Lag) to Device
             saveLocally(content, lang);
             updateStatus('Tersimpan di Perangkat');
 
-            // 2. Debounced Save to Cloud (Prevents lag/spamming API)
             clearTimeout(syncTimeout);
             syncTimeout = setTimeout(() => {
                 syncToCloud(content, lang);
-            }, 2000); // Wait 2 seconds after typing stops before cloud sync
+            }, 2000); 
         };
 
         const loadInitialData = async () => {
-            // Load local first for immediate zero-lag display
-            let content = localStorage.getItem('devpad_content') || '// Mulai mencatat kodemu di sini...\n// Tidak ada limit teks. Ketik sebanyak apapun.\n';
-            let lang = localStorage.getItem('devpad_lang') || 'javascript';
+            let content = localStorage.getItem(`devpad_content_${currentNoteId}`) || '// Mulai mencatat...\n';
+            const noteMeta = notes.find(n => n.id === currentNoteId);
+            let lang = noteMeta ? noteMeta.lang : 'javascript';
             
             document.getElementById('language-select').value = lang;
 
-            // Attempt to fetch from Cloud to see if it's newer
             try {
                 const { data, error } = await supabaseClient
                     .from('coding_notes')
                     .select('content, language')
-                    .eq('id', DOC_ID)
+                    .eq('id', currentNoteId)
                     .single();
                 
                 if (data && data.content) {
@@ -307,21 +339,46 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
                     if(data.language) {
                         lang = data.language;
                         document.getElementById('language-select').value = lang;
+                        if(noteMeta) {
+                            noteMeta.lang = lang;
+                            saveNotesList();
+                        }
                     }
                     showToast('Disinkronkan dari Cloud', 'success');
                 }
             } catch (err) {
-                console.log("Using local data (Cloud fetch failed or empty).");
+                console.log("Menggunakan data lokal.");
             }
 
+            renderSidebar();
             return { content, lang };
         };
 
-        // --- 5. Editor Initialization ---
-        // Setup RequireJS path for Monaco Editor CDN
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+        // --- 5. Editor Initialization & Mobile Fixes ---
+        
+        // Timeout fallback jika Monaco gagal dimuat di HP/Browser tertentu
+        setTimeout(() => {
+            const loader = document.getElementById('loading-overlay');
+            if (loader && loader.style.display !== 'none') {
+                loader.innerHTML = `
+                    <i class="fa-solid fa-triangle-exclamation text-4xl text-yellow-500 mb-4"></i>
+                    <p class="text-gray-300 text-sm text-center px-4 mb-4">Koneksi lambat atau browser memblokir sistem Editor.</p>
+                    <button onclick="window.location.reload()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow">Coba Muat Ulang</button>
+                `;
+            }
+        }, 12000);
 
-        // Load Monaco
+        // Fix Cross-Origin Worker Issue untuk HP (Ini yang menyelesaikan masalah Loading Terus-Menerus)
+        window.MonacoEnvironment = {
+            getWorkerUrl: function (moduleId, label) {
+                return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+                    self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/' };
+                    importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/base/worker/workerMain.js');
+                `)}`;
+            }
+        };
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
         require(['vs/editor/editor.main'], async function() {
             
             // Define Custom Dark Theme matching the UI
@@ -364,22 +421,130 @@ ALTER TABLE public.coding_notes DISABLE ROW LEVEL SECURITY;</pre>
             document.getElementById('language-select').addEventListener('change', (e) => {
                 const newLang = e.target.value;
                 monaco.editor.setModelLanguage(editor.getModel(), newLang);
-                handleContentChange(); // Trigger save to register language change
+                handleContentChange(); 
                 showToast(`Bahasa diubah ke ${newLang.toUpperCase()}`);
             });
         });
 
-        // --- 6. Anti-Lost Feature (Visibility Change) ---
-        // If user switches apps or closes tab, aggressively save to local storage immediately
+        // --- 6. Anti-Lost Feature ---
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'hidden' && editor) {
                 saveLocally(editor.getValue(), document.getElementById('language-select').value);
-                // We do not await cloud sync here as browser might kill process,
-                // but local storage is synchronous and guaranteed.
             }
         });
 
-        // --- 7. Modal Handlers ---
+        // --- 7. Sidebar & UI Handlers ---
+        function toggleSidebar(show) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (show === undefined) show = sidebar.classList.contains('-translate-x-full');
+            
+            if (show) {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
+        const renderSidebar = () => {
+            const listEl = document.getElementById('notes-list');
+            listEl.innerHTML = '';
+            notes.forEach(note => {
+                const isActive = note.id === currentNoteId;
+                const bgClass = isActive ? 'bg-[#3c3c3c] border-l-4 border-blue-500' : 'bg-transparent border-l-4 border-transparent hover:bg-[#333]';
+                
+                listEl.innerHTML += `
+                    <div class="flex items-center justify-between p-2 rounded cursor-pointer ${bgClass} transition group mb-1" onclick="switchNote('${note.id}')">
+                        <div class="overflow-hidden flex-1">
+                            <h3 class="text-gray-200 text-sm font-semibold truncate">${note.title || 'Tanpa Judul'}</h3>
+                            <p class="text-xs text-gray-500 mt-1 uppercase">${note.lang}</p>
+                        </div>
+                        <button onclick="deleteNote(event, '${note.id}')" class="text-gray-500 hover:text-red-500 hidden group-hover:block transition px-2" title="Hapus">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
+                    </div>
+                `;
+            });
+        };
+
+        const createNewNote = () => {
+            const newId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            notes.unshift({ id: newId, title: 'Catatan Baru', lang: 'javascript' });
+            saveNotesList();
+            renderSidebar();
+            switchNote(newId);
+        };
+
+        const switchNote = async (id) => {
+            if(isSyncing) return; // Mencegah crash jika sedang save
+            if(id === currentNoteId) { toggleSidebar(false); return; }
+
+            // Save saat ini sebelum pindah
+            if(editor) saveLocally(editor.getValue(), document.getElementById('language-select').value);
+
+            currentNoteId = id;
+            localStorage.setItem('devpad_current_note_id', currentNoteId);
+            
+            const noteMeta = notes.find(n => n.id === id);
+            if(!noteMeta) return;
+
+            // Set UI & Editor Language
+            document.getElementById('language-select').value = noteMeta.lang;
+            if(editor) monaco.editor.setModelLanguage(editor.getModel(), noteMeta.lang);
+
+            // Load Content Lokal
+            let content = localStorage.getItem(`devpad_content_${currentNoteId}`) || '';
+            if(editor) editor.setValue(content);
+
+            toggleSidebar(false);
+            renderSidebar();
+
+            // Fetch dari Cloud di latar belakang
+            updateStatus('Mengecek Cloud...', 'syncing');
+            try {
+                const { data, error } = await supabaseClient.from('coding_notes').select('content, language').eq('id', currentNoteId).single();
+                if (data && data.content) {
+                    if (data.content !== content) {
+                        if(editor) editor.setValue(data.content);
+                        saveLocally(data.content, data.language || noteMeta.lang);
+                    }
+                    if(data.language && data.language !== noteMeta.lang) {
+                        document.getElementById('language-select').value = data.language;
+                        if(editor) monaco.editor.setModelLanguage(editor.getModel(), data.language);
+                    }
+                    updateStatus('Sinkron', 'success');
+                } else {
+                    updateStatus('Tersimpan', 'normal');
+                }
+            } catch (err) {
+                updateStatus('Lokal (Offline)', 'normal');
+            }
+        };
+
+        const deleteNote = async (e, id) => {
+            e.stopPropagation();
+            if(notes.length <= 1) {
+                showToast('Minimal harus ada 1 catatan', 'error');
+                return;
+            }
+            if(confirm('Yakin ingin menghapus catatan ini secara permanen?')) {
+                notes = notes.filter(n => n.id !== id);
+                localStorage.removeItem(`devpad_content_${id}`);
+                saveNotesList();
+                
+                // Coba hapus di Cloud
+                try { await supabaseClient.from('coding_notes').delete().eq('id', id); } catch(e) {}
+                
+                if(currentNoteId === id) switchNote(notes[0].id);
+                else renderSidebar();
+                
+                showToast('Catatan dihapus');
+            }
+        };
+
+        // --- 8. Modal Handlers ---
         function showDbSetupModal() {
             const modal = document.getElementById('db-modal');
             modal.classList.remove('hidden');
